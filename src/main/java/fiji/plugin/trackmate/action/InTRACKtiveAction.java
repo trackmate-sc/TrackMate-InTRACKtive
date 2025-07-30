@@ -29,6 +29,7 @@ import org.scijava.plugin.Plugin;
 
 import fiji.plugin.trackmate.SelectionModel;
 import fiji.plugin.trackmate.TrackMate;
+import fiji.plugin.trackmate.gui.GuiUtils;
 import fiji.plugin.trackmate.gui.displaysettings.DisplaySettings;
 import fiji.plugin.trackmate.io.GeffIOUtils;
 
@@ -80,7 +81,7 @@ public class InTRACKtiveAction extends AbstractTMAction
 		@Override
 		public ImageIcon getIcon()
 		{
-			return InTRACKtiveLauncher.ICON;
+			return GuiUtils.scaleImage( InTRACKtiveLauncher.ICON, 16, 16 );
 		}
 
 		@Override
