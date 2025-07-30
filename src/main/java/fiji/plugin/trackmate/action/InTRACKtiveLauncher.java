@@ -35,7 +35,6 @@ import fiji.plugin.trackmate.io.TrackMateGeffWriter;
 import fiji.plugin.trackmate.util.TMUtils;
 import fiji.plugin.trackmate.util.cli.CLIUtils;
 import fiji.plugin.trackmate.util.cli.ConfigGuiBuilder;
-import ucar.ma2.InvalidRangeException;
 
 public class InTRACKtiveLauncher
 {
@@ -149,6 +148,18 @@ public class InTRACKtiveLauncher
 			if ( Files.exists( polygonsFolder ) )
 				FileUtils.deleteDirectory( polygonsFolder.toFile() );
 
+			/*
+			 * 2. Remove the 'covariance2d' and 'covariance3d' subfolders, as
+			 * they are not scalar and will mess with the inTRACKtive
+			 * requirements for extra data to be scalar.
+			 */
+			final Path covariance2dFolder = geffPath.resolve( "nodes/props/covariance2d" );
+			if ( Files.exists( covariance2dFolder ) )
+				FileUtils.deleteDirectory( covariance2dFolder.toFile() );
+			final Path covariance3dFolder = geffPath.resolve( "nodes/props/covariance3d" );
+			if ( Files.exists( covariance3dFolder ) )
+				FileUtils.deleteDirectory( covariance3dFolder.toFile() );
+
 			cli.geffFile().set( geffPath.toString() );
 
 			// Run the CLI.
@@ -158,10 +169,6 @@ public class InTRACKtiveLauncher
 		catch ( final IOException e )
 		{
 			logger.error( "Could not create temp folder to export TrackMate to GEFF file:\n" + e.getMessage() );
-		}
-		catch ( final InvalidRangeException e )
-		{
-			logger.error( "Could not export TrackMate to GEFF file:\n" + e.getMessage() );
 		}
 		return false;
 	}
