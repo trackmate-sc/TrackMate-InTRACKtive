@@ -9,14 +9,6 @@ public class InTRACKtiveCLI extends CondaCLIConfigurator
 
 	public InTRACKtiveCLI()
 	{
-		this.geffFile = addPathArgument()
-				.name( "GEFF file" )
-				.help( "Path to the GEFF file where TrackMate data is exported." )
-				.argument( "" )
-				.visible( false )
-				.required( true )
-				.get();
-
 		addFlag()
 				.name( "Export all features" )
 				.help( "Add all features to inTRACKtive." )
@@ -27,6 +19,14 @@ public class InTRACKtiveCLI extends CondaCLIConfigurator
 				.defaultValue( true )
 				.get()
 				.set();
+
+		this.geffFile = addPathArgument()
+				.name( "GEFF file" )
+				.help( "Path to the GEFF file where TrackMate data is exported." )
+				.argument( "" )
+				.visible( false )
+				.required( true )
+				.get();
 	}
 
 	public PathArgument geffFile()
