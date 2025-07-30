@@ -17,15 +17,17 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JDialog;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 
 import org.apache.commons.io.FileUtils;
 import org.scijava.prefs.PrefService;
 
+import fiji.plugin.trackmate.LoadTrackMatePlugIn;
 import fiji.plugin.trackmate.Logger;
 import fiji.plugin.trackmate.Model;
 import fiji.plugin.trackmate.gui.GuiUtils;
@@ -35,6 +37,8 @@ import fiji.plugin.trackmate.io.TrackMateGeffWriter;
 import fiji.plugin.trackmate.util.TMUtils;
 import fiji.plugin.trackmate.util.cli.CLIUtils;
 import fiji.plugin.trackmate.util.cli.ConfigGuiBuilder;
+import fiji.plugin.trackmate.util.cli.ConfigGuiBuilder.ConfigPanel;
+import ij.ImageJ;
 
 public class InTRACKtiveLauncher
 {
@@ -67,7 +71,7 @@ public class InTRACKtiveLauncher
 	public static void showDialog( final Frame parent, final Model model, final Logger logger, final boolean is2d )
 	{
 		final PrefService prefService = TMUtils.getContext().getService( PrefService.class );
-		String lastCondaEnv = prefService.get( InTRACKtiveLauncher.class, CONDA_ENV_PREF_KEY, "base" );
+		final String lastCondaEnv = prefService.get( InTRACKtiveLauncher.class, CONDA_ENV_PREF_KEY, "base" );
 		cli.getCommandArg().set( lastCondaEnv );
 
 		final JPanel panel = new JPanel();
@@ -101,37 +105,111 @@ public class InTRACKtiveLauncher
 		header.add( l2 );
 
 		panel.add( header, BorderLayout.NORTH );
-		panel.add( ConfigGuiBuilder.build( cli ), BorderLayout.CENTER );
+		final ConfigPanel cliPanel = ConfigGuiBuilder.build( cli );
+		panel.add( cliPanel, BorderLayout.CENTER );
 
-		final int result = JOptionPane.showOptionDialog(
-				parent,
-				panel,
-				TITLE,
-				JOptionPane.OK_CANCEL_OPTION,
-				JOptionPane.PLAIN_MESSAGE,
-				null,
-				null,
-				null );
+		// Create a JDialog
+		final JPanel dialogPanel = new JPanel();
+		dialogPanel.setLayout( new BorderLayout() );
+		dialogPanel.setBorder( BorderFactory.createEmptyBorder( 5, 5, 5, 5 ) );
+		dialogPanel.add( panel, BorderLayout.CENTER );
 
-		if ( result != JOptionPane.OK_OPTION )
-			return;
+		final JPanel buttonPanel = new JPanel();
+		buttonPanel.setLayout( new BoxLayout( buttonPanel, BoxLayout.X_AXIS ) );
+		final JButton okButton = new JButton( "OK" );
+		final JButton cancelButton = new JButton( "Cancel" );
+		buttonPanel.add( Box.createHorizontalGlue() );
+		buttonPanel.add( okButton );
+		buttonPanel.add( cancelButton );
+		dialogPanel.add( buttonPanel, BorderLayout.SOUTH );
 
+		final JDialog dialog = new JDialog( parent, TITLE, false );
+		dialog.setContentPane( dialogPanel );
+		dialog.pack();
+		dialog.setResizable( false );
 
-		final boolean success = run( cli, model, logger, is2d );
-		if ( success )
+		// The thread that will run the CLI.
+		final Thread thread = new Thread( "TrackMate-InTRACKtive launcher" )
 		{
-			lastCondaEnv = cli.getCommandArg().getValue();
-			prefService.put( InTRACKtiveLauncher.class, CONDA_ENV_PREF_KEY, lastCondaEnv );
-		}
+
+			private Process process = null;
+
+			@Override
+			public void run()
+			{
+				try
+				{
+					this.process = InTRACKtiveLauncher.run( cli, model, logger, is2d );
+					if ( this.process == null )
+					{
+						logger.error( "Could not launch inTRACKtive." );
+						return;
+					}
+
+					final int exitValue = process.waitFor();
+					final boolean success = exitValue == 0;
+					if ( success )
+					{
+						final String condaEnv = cli.getCommandArg().getValue();
+						prefService.put( InTRACKtiveLauncher.class, CONDA_ENV_PREF_KEY, condaEnv );
+					}
+				}
+				catch ( final InterruptedException e )
+				{
+					logger.log( "Closing inTRACKtive server.\n" );
+					process.destroy();
+					logger.log( "Done.\n" );
+				}
+			}
+		};
+
+		dialog.setDefaultCloseOperation( JDialog.DISPOSE_ON_CLOSE );
+		dialog.addWindowListener( new java.awt.event.WindowAdapter()
+		{
+			@Override
+			public void windowClosed( final java.awt.event.WindowEvent e )
+			{
+				thread.interrupt();
+			}
+		} );
+
+		cancelButton.addActionListener( e -> dialog.dispose() );
+		okButton.addActionListener( e -> {
+			panel.remove( cliPanel );
+			header.remove( l2 );
+			header.revalidate();
+			final JLabel infoClose = new JLabel(
+					"<html>"
+							+ "Launching inTRACKtive server. "
+							+ "<p>"
+							+ "Closing this window or pressing the button below will kill the server."
+							+ "</html>" );
+			infoClose.setFont( FONT );
+			panel.add( infoClose, BorderLayout.CENTER );
+			panel.revalidate();
+
+			okButton.setVisible( false );
+			cancelButton.setVisible( false );
+			buttonPanel.removeAll();
+			thread.start();
+			final JButton killButton = new JButton( "Kill inTRACKtive server" );
+			killButton.setFont( FONT );
+			killButton.addActionListener( e2 -> dialog.dispose() );
+			buttonPanel.add( Box.createHorizontalGlue() );
+			buttonPanel.add( killButton );
+			buttonPanel.revalidate();
+		} );
+		GuiUtils.positionWindow( dialog, parent );
+		dialog.setVisible( true );
 	}
 
-	public static boolean run( final InTRACKtiveCLI cli, final Model model, final Logger logger, final boolean is2d )
+	public static Process run( final InTRACKtiveCLI cli, final Model model, final Logger logger, final boolean is2d )
 	{
 		try
 		{
 			// Export to a tmp GEFF file.
 			final Path maskTmpFolder = Files.createTempDirectory( "TrackMate-InTRACKtive_" );
-//			CLIUtils.recursiveDeleteOnShutdownHook( maskTmpFolder );
+			CLIUtils.recursiveDeleteOnShutdownHook( maskTmpFolder );
 			final String exportPath = maskTmpFolder.resolve( "trackmate.zarr" ).toString();
 			TrackMateGeffWriter.export( model, exportPath, is2d );
 
@@ -160,20 +238,29 @@ public class InTRACKtiveLauncher
 			if ( Files.exists( covariance3dFolder ) )
 				FileUtils.deleteDirectory( covariance3dFolder.toFile() );
 
+			// Give the path to the GEFF file to the CLI.
 			cli.geffFile().set( geffPath.toString() );
 
 			// Run the CLI.
 			final String logFile = maskTmpFolder.resolve( "trackmate-intracktive.log" ).toString();
-			return CLIUtils.execute( cli, logger, new File( logFile ) );
+			return CLIUtils.createAndHandleProcess( cli, logger, new File( logFile ) );
 		}
 		catch ( final IOException e )
 		{
 			logger.error( "Could not create temp folder to export TrackMate to GEFF file:\n" + e.getMessage() );
 		}
-		return false;
+		return null;
 	}
 
 	public static void main( final String[] args )
+	{
+		GuiUtils.setSystemLookAndFeel();
+		ImageJ.main( args );
+		final LoadTrackMatePlugIn plugIn = new LoadTrackMatePlugIn();
+		plugIn.run( null );
+	}
+
+	public static void main2( final String[] args )
 	{
 		final String filename = "../TrackMate/samples/MAX_Merged.xml";
 		final TmXmlReader reader = new TmXmlReader( new File( filename ) );
@@ -187,6 +274,5 @@ public class InTRACKtiveLauncher
 		final Logger logger = Logger.DEFAULT_LOGGER;
 
 		showDialog( null, model, logger, true );
-		System.out.println( "Done." ); // DEBUG
 	}
 }
