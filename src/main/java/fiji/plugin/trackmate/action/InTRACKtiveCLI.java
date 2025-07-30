@@ -16,6 +16,17 @@ public class InTRACKtiveCLI extends CondaCLIConfigurator
 				.visible( false )
 				.required( true )
 				.get();
+
+		addFlag()
+				.name( "Export all features" )
+				.help( "Add all features to inTRACKtive." )
+				.argument( "--add_all_attributes" )
+				.visible( false )
+				.required( false )
+				.inCLI( true )
+				.defaultValue( true )
+				.get()
+				.set();
 	}
 
 	public PathArgument geffFile()
